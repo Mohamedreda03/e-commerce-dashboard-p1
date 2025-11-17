@@ -15,23 +15,79 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { useState } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import Link from "next/link";
+import { authClient } from "@/lib/auth-client";
+import { toast } from "sonner";
+import { GoogleIcon } from "@/components/icons";
 
 export default function SignIn() {
   const [showPassword, setShowPassword] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
-  const form = useForm({
+  const form = useForm<SignInSchemaType>({
     resolver: zodResolver(SignInSchema),
+    defaultValues: {
+      email: "",
+      password: "",
+    },
   });
 
+  const isLoading = form.formState.isSubmitting;
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setErrorMessage(null);
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [errorMessage]);
+
   async function onSubmit(values: SignInSchemaType) {
-    console.log(values);
+    await authClient.signIn.email(
+      {
+        email: values.email,
+        password: values.password,
+        callbackURL: "/dashboard",
+        rememberMe: false,
+      },
+      {
+        onSuccess: () => {
+          toast.success("Successfully signed in!");
+        },
+        onError: (ctx) => {
+          setErrorMessage(ctx.error.message);
+          toast.error(ctx.error.message);
+        },
+      }
+    );
   }
 
   function toggleShowPassword() {
     setShowPassword((prev) => !prev);
+  }
+
+  async function handleGoogleSignIn() {
+    if (isGoogleLoading) return;
+
+    try {
+      setIsGoogleLoading(true);
+      await authClient.signIn.social({
+        provider: "google",
+        callbackURL: "/dashboard",
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to continue with Google.";
+      setErrorMessage(message);
+      toast.error(message);
+    } finally {
+      setIsGoogleLoading(false);
+    }
   }
 
   return (
@@ -44,6 +100,11 @@ export default function SignIn() {
           </p>
         </div>
         <div>
+          {errorMessage && (
+            <div className="mb-3 text-sm text-red-500 p-3 border border-red-400 rounded-lg bg-red-100">
+              {errorMessage}
+            </div>
+          )}
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
               <FormField
@@ -53,7 +114,11 @@ export default function SignIn() {
                   <FormItem>
                     <FormLabel>Email</FormLabel>
                     <FormControl>
-                      <Input placeholder="example@example.com" {...field} />
+                      <Input
+                        placeholder="example@example.com"
+                        disabled={isLoading}
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -69,6 +134,7 @@ export default function SignIn() {
                       <div className="relative">
                         <Input
                           type={showPassword ? "text" : "password"}
+                          disabled={isLoading}
                           placeholder="password"
                           {...field}
                         />
@@ -97,8 +163,27 @@ export default function SignIn() {
                 Forgot Password?
               </Link>
 
-              <Button type="submit" className="w-full">
-                Sign In
+              <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading ? "Signing In..." : "Sign In"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full flex items-center justify-center gap-2"
+                onClick={handleGoogleSignIn}
+                disabled={isGoogleLoading}
+              >
+                {isGoogleLoading ? (
+                  <Loader2
+                    className="h-4 w-4 animate-spin"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <GoogleIcon className="h-4 w-4" aria-hidden="true" />
+                )}
+                {isGoogleLoading
+                  ? "Connecting to Google..."
+                  : "Continue with Google"}
               </Button>
             </form>
           </Form>
@@ -106,7 +191,7 @@ export default function SignIn() {
         <div>
           <Link href="/sign-up">
             <Button variant="link" className="w-full h-4!">
-              don't have an account? sign up
+              don&apos;t have an account? sign up
             </Button>
           </Link>
         </div>

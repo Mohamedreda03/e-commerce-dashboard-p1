@@ -15,20 +15,57 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { useState } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import Link from "next/link";
+import { authClient } from "@/lib/auth-client";
+import { toast } from "sonner";
+import { GoogleIcon } from "@/components/icons";
 
 export default function SignUp() {
   const [showPassword, setShowPassword] = useState(false);
   const [showRepeatPassword, setShowRepeatPassword] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
-  const form = useForm({
+  const form = useForm<SignUpSchemaType>({
     resolver: zodResolver(SignUpSchema),
+    defaultValues: {
+      username: "",
+      email: "",
+      password: "",
+      repeatPassword: "",
+    },
   });
 
+  const isLoading = form.formState.isSubmitting;
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setErrorMessage(null);
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [errorMessage]);
+
   async function onSubmit(values: SignUpSchemaType) {
-    console.log(values);
+    await authClient.signUp.email(
+      {
+        email: values.email,
+        password: values.password,
+        name: values.username,
+        callbackURL: "/sign-in",
+      },
+      {
+        onSuccess: () => {
+          toast.success("Account created successfully!");
+        },
+        onError: (ctx) => {
+          setErrorMessage(ctx.error.message);
+          toast.error(ctx.error.message);
+        },
+      }
+    );
   }
 
   function toggleShowPassword() {
@@ -37,6 +74,27 @@ export default function SignUp() {
 
   function toggleShowRepeatPassword() {
     setShowRepeatPassword((prev) => !prev);
+  }
+
+  async function handleGoogleSignUp() {
+    if (isGoogleLoading) return;
+
+    try {
+      setIsGoogleLoading(true);
+      await authClient.signIn.social({
+        provider: "google",
+        callbackURL: "/dashboard",
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to continue with Google.";
+      setErrorMessage(message);
+      toast.error(message);
+    } finally {
+      setIsGoogleLoading(false);
+    }
   }
 
   return (
@@ -48,7 +106,13 @@ export default function SignUp() {
             Create your account to get started.
           </p>
         </div>
+
         <div>
+          {errorMessage && (
+            <div className="mb-3 text-sm text-red-500 p-3 border border-red-400 rounded-lg bg-red-100">
+              {errorMessage}
+            </div>
+          )}
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
               <FormField
@@ -58,7 +122,11 @@ export default function SignUp() {
                   <FormItem>
                     <FormLabel>Username</FormLabel>
                     <FormControl>
-                      <Input placeholder="username" {...field} />
+                      <Input
+                        placeholder="username"
+                        disabled={isLoading}
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -71,7 +139,11 @@ export default function SignUp() {
                   <FormItem>
                     <FormLabel>Email</FormLabel>
                     <FormControl>
-                      <Input placeholder="example@example.com" {...field} />
+                      <Input
+                        placeholder="example@example.com"
+                        disabled={isLoading}
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -87,6 +159,7 @@ export default function SignUp() {
                       <div className="relative">
                         <Input
                           type={showPassword ? "text" : "password"}
+                          disabled={isLoading}
                           placeholder="password"
                           {...field}
                         />
@@ -117,6 +190,7 @@ export default function SignUp() {
                       <div className="relative">
                         <Input
                           type={showRepeatPassword ? "text" : "password"}
+                          disabled={isLoading}
                           placeholder="repeat password"
                           {...field}
                         />
@@ -137,8 +211,31 @@ export default function SignUp() {
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full mt-4">
-                Create Account
+              <Button
+                type="submit"
+                className="w-full mt-4"
+                disabled={isLoading}
+              >
+                {isLoading ? "Creating Account..." : "Create Account"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full flex items-center justify-center gap-2"
+                onClick={handleGoogleSignUp}
+                disabled={isGoogleLoading}
+              >
+                {isGoogleLoading ? (
+                  <Loader2
+                    className="h-4 w-4 animate-spin"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <GoogleIcon className="h-4 w-4" aria-hidden="true" />
+                )}
+                {isGoogleLoading
+                  ? "Connecting to Google..."
+                  : "Continue with Google"}
               </Button>
             </form>
           </Form>

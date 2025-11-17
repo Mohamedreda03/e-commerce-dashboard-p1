@@ -18,17 +18,38 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
+import { authClient } from "@/lib/auth-client";
+import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 
 export default function ResetPassword() {
   const [showPassword, setShowPassword] = useState(false);
   const [showRepeatPassword, setShowRepeatPassword] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const form = useForm({
+  const token = searchParams.get("token") || "";
+
+  const form = useForm<ResetPasswordSchemaType>({
     resolver: zodResolver(ResetPasswordSchema),
+    defaultValues: {
+      password: "",
+      repeatPassword: "",
+    },
   });
+
+  const isLoading = form.formState.isSubmitting;
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setErrorMessage(null);
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [errorMessage]);
 
   function toggleShowPassword() {
     setShowPassword((prev) => !prev);
@@ -39,7 +60,27 @@ export default function ResetPassword() {
   }
 
   async function onSubmit(values: ResetPasswordSchemaType) {
-    console.log(values);
+    if (!token) {
+      toast.error("Invalid or missing token.");
+      router.push("/forgot-password");
+      return;
+    }
+    await authClient.resetPassword(
+      {
+        newPassword: values.password,
+        token,
+      },
+      {
+        onSuccess: () => {
+          toast.success("Password reset successfully!");
+          router.push("/sign-in");
+        },
+        onError: (ctx) => {
+          toast.error(ctx.error.message);
+          setErrorMessage(ctx.error.message);
+        },
+      }
+    );
   }
 
   return (
@@ -52,6 +93,11 @@ export default function ResetPassword() {
           </p>
         </div>
         <div>
+          {errorMessage && (
+            <div className="mb-3 text-sm text-red-500 p-3 border border-red-400 rounded-lg bg-red-100">
+              {errorMessage}
+            </div>
+          )}
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
               <FormField
@@ -64,6 +110,7 @@ export default function ResetPassword() {
                       <div className="relative">
                         <Input
                           type={showPassword ? "text" : "password"}
+                          disabled={isLoading}
                           placeholder="password"
                           {...field}
                         />
@@ -94,6 +141,7 @@ export default function ResetPassword() {
                       <div className="relative">
                         <Input
                           type={showRepeatPassword ? "text" : "password"}
+                          disabled={isLoading}
                           placeholder="repeat password"
                           {...field}
                         />
@@ -115,8 +163,8 @@ export default function ResetPassword() {
                 )}
               />
 
-              <Button type="submit" className="w-full">
-                Reset Password
+              <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading ? "Resetting..." : "Reset Password"}
               </Button>
             </form>
           </Form>
